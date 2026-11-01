@@ -96,7 +96,7 @@ def main() -> int:
     if args.changes_file:
         changes = args.changes_file.read_text(encoding="utf-8").strip()
     else:
-        kernels = sorted({p.parent.name for p in args.packages.glob("*/*.txz")}, key=lambda s: tuple(int(x) if x.isdigit() else x for x in s.split(".")))
+        kernels = sorted({p.parent.name for p in args.packages.glob("*/*.txz")})
         changes = (
             f"###{args.version}\n"
             f"- turing-unlock {args.upstream_version}"
