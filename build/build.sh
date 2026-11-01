@@ -126,7 +126,7 @@ else
   git -C "$SRC" -c advice.detachedHead=false checkout -q --detach "$TURING_UNLOCK_REF" 2>/dev/null \
     || git -C "$SRC" -c advice.detachedHead=false checkout -q --detach "origin/$TURING_UNLOCK_REF"
 fi
-COMMIT=$(git -C "$SRC" rev-parse HEAD 2>/dev/null || echo unknown)
+COMMIT=$(git -c safe.directory="*" -C "$SRC" rev-parse HEAD 2>/dev/null || echo unknown)
 VERSION=$(cat "$SRC/VERSION")
 NV=$(sed -n 's/^NV *:= *//p' "$SRC/Makefile")
 [ -n "$NV" ] || die "cannot read the pinned NVIDIA version from the Makefile"
