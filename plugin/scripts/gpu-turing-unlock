@@ -47,7 +47,7 @@ module_pkg() { ls -1 "$PKGROOT/$MAJOR"/turing-unlock-module-*-"$KR"-*.txz 2>/dev
 firmware_pkg() { ls -1 "$PKGROOT/firmware"/turing-unlock-firmware-*.txz 2>/dev/null | sort -V | tail -1; }
 pkg_installed() { [ -e "$PKGDB/$(basename "$1" .txz)" ]; }
 pkg_verify() {
-  [ -f "$1.sha256" ] || return 0
+  [ -f "$1.sha256" ] || return 1
   ( cd "$(dirname "$1")" && sha256sum -c --quiet "$(basename "$1").sha256" >/dev/null 2>&1 )
 }
 firmware_ok() {
@@ -161,9 +161,13 @@ start() {
 firmware() {
   local fwpkg=""
   fwpkg=$(firmware_pkg)
-  if [ -n "$fwpkg" ] && [ -s "$fwpkg" ]; then
+  if [ -n "$fwpkg" ] && [ -s "$fwpkg" ] && pkg_verify "$fwpkg"; then
     log "firmware package already present: $fwpkg"
   else
+    if [ -n "$fwpkg" ]; then
+      log "existing firmware package failed its checksum; rebuilding"
+      rm -f "$fwpkg" "$fwpkg.sha256"
+    fi
     command -v python3 >/dev/null 2>&1 || { notify "Cannot build firmware" "python3 is missing on this Unraid install." alert; return 1; }
     command -v zstd >/dev/null 2>&1 || { notify "Cannot build firmware" "zstd is missing on this Unraid install." alert; return 1; }
     [ -x "$FWBUILD" ] || { notify "Cannot build firmware" "$FWBUILD is missing; reinstall the plugin." alert; return 1; }

@@ -96,14 +96,15 @@ def main() -> int:
     if args.changes_file:
         changes = args.changes_file.read_text(encoding="utf-8").strip()
     else:
-        kernels = sorted({p.parent.name for p in args.packages.glob("*/*.txz")})
+        kernels = sorted({p.parent.name for p in args.packages.glob("*/*.txz") if p.parent.name != "firmware"})
         changes = (
             f"###{args.version}\n"
             f"- turing-unlock {args.upstream_version}"
             + (f" ({args.upstream_ref[:12]})" if args.upstream_ref else "")
             + "\n- Module packages for Unraid kernels: " + ", ".join(kernels) + "\n"
-            "- Firmware is built locally from the pinned NVIDIA 610.43.03 inputs (not redistributed).\n"
         )
+        if any(args.packages.glob("firmware/*.txz")):
+            changes += "- Firmware package: pinned NVIDIA 610.43.03 (NVIDIA terms; see NOTICE.md).\n"
 
     rendered = template
     for needle, value in {

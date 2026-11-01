@@ -53,10 +53,10 @@ for f in $FW_FILES; do
   [ -f "/lib/firmware/$f" ] || { fw_missing=1; break; }
 done
 if [ -n "$FW" ] && { [ "$fw_missing" = 1 ] || [ ! -e "$PKGDB/$(basename "$FW" .txz)" ]; }; then
-  if [ ! -f "$FW.sha256" ] || ( cd "$(dirname "$FW")" && sha256sum -c --quiet "$(basename "$FW").sha256" >/dev/null 2>&1 ); then
+  if [ -f "$FW.sha256" ] && ( cd "$(dirname "$FW")" && sha256sum -c --quiet "$(basename "$FW").sha256" >/dev/null 2>&1 ); then
     /sbin/installpkg "$FW" >/dev/null 2>&1 || { echo "turing_unlock: could not install $(basename "$FW")"; exit 0; }
   else
-    echo "turing_unlock: checksum mismatch for $(basename "$FW"); not installing"
+    echo "turing_unlock: missing or bad checksum for $(basename "$FW"); not installing"
     exit 0
   fi
 fi
