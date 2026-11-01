@@ -59,10 +59,16 @@ TARGETS="all"
 
 <!-- install / every boot: the module package also installs rc.modules-<kernel>, which Unraid runs
      before rc.local; this is the fallback for the first install and for a kernel whose package
-     arrived after rc.modules. Always exits 0: a failing Run moves the plugin to plugins-error. -->
+     arrived after rc.modules. Then start the /boot/changes.txt watcher, which fetches the module
+     for the kernel an Unraid update will boot (same idea as the nvidia-driver update helper).
+     Always exits 0: a failing Run moves the plugin to plugins-error. -->
 <FILE Run="/bin/bash">
 <INLINE><![CDATA[
 /usr/local/emhttp/plugins/gpu-turing-unlock/scripts/gpu-turing-unlock start || true
+if ! pgrep -f 'scripts/gpu-turing-unlock watch' >/dev/null 2>&1; then
+  setsid /usr/local/emhttp/plugins/gpu-turing-unlock/scripts/gpu-turing-unlock watch \
+    </dev/null >>/var/log/gpu-turing-unlock.log 2>&1 &
+fi
 echo ""
 echo "Turing Unlock plugin installed. Settings > User Utilities > Turing Unlock"
 exit 0
@@ -73,6 +79,8 @@ exit 0
 <FILE Run="/bin/bash" Method="remove">
 <INLINE><![CDATA[
 /usr/local/emhttp/plugins/gpu-turing-unlock/scripts/gpu-turing-unlock stop 2>/dev/null
+pkill -f 'scripts/gpu-turing-unlock watch' 2>/dev/null || true
+rm -f /var/log/gpu-turing-unlock.log
 PKGDB=/var/lib/pkgtools/packages; [ -d "$PKGDB" ] || PKGDB=/var/log/packages
 for p in "$PKGDB"/turing-unlock-module-* "$PKGDB"/turing-unlock-firmware-*; do
   [ -e "$p" ] && removepkg "$(basename "$p")" >/dev/null 2>&1

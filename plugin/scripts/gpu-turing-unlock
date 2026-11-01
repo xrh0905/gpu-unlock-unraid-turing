@@ -25,6 +25,10 @@ PKGDB=/var/lib/pkgtools/packages
 [ -d "$PKGDB" ] || PKGDB=/var/log/packages
 KO=/lib/modules/$KR/extra/turing_unlock.ko
 NV=610.43.03
+REPO=${TURING_UNLOCK_REPO_SLUG:-xrh0905/gpu-unlock-unraid-turing}
+API=https://api.github.com/repos/$REPO/releases/latest
+DLBASE=https://github.com/$REPO/releases/download
+CHANGES=${TURING_UNLOCK_CHANGES:-/boot/changes.txt}
 # TU102/TU104/TU106 IDs from kernel/turing_unlock/main.c; only TU102 is tested upstream.
 SUPPORTED_IDS=" 1e03 1e04 1e07 1e2d 1e2e 1e81 1e82 1e84 1e87 1e89 1ec2 1ec7 1f02 1f03 1f06 1f07 1f08 1f42 1f47 "
 
@@ -43,7 +47,8 @@ TARGETS=$(echo "$TARGETS" | tr -d ' ' | tr 'A-F' 'a-f')
 targets_valid() { [ "$TARGETS" = all ] || [[ $TARGETS =~ ^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f](,[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f])*$ ]]; }
 
 loaded() { [ -d /sys/module/turing_unlock ]; }
-module_pkg() { ls -1 "$PKGROOT/$MAJOR"/turing-unlock-module-*-"$KR"-*.txz 2>/dev/null | sort -V | tail -1; }
+module_pkg_for_kernel() { ls -1 "$PKGROOT/${1%%-*}"/turing-unlock-module-*-"$1"-*.txz 2>/dev/null | sort -V | tail -1; }
+module_pkg() { module_pkg_for_kernel "$KR"; }
 firmware_pkg() { ls -1 "$PKGROOT/firmware"/turing-unlock-firmware-*.txz 2>/dev/null | sort -V | tail -1; }
 pkg_installed() { [ -e "$PKGDB/$(basename "$1" .txz)" ]; }
 pkg_verify() {
@@ -56,6 +61,173 @@ firmware_ok() {
     [ -f "/lib/firmware/$f" ] || return 1
   done
   return 0
+}
+
+# --- module package for another kernel (post Unraid update) ---------------------
+# Unraid rebuilds the ramdisk on every boot, so a new OS kernel has no turing_unlock.ko until the
+# package for that kernel is installed. The module package therefore has to arrive on the flash
+# before the reboot; this is the same idea as the nvidia-driver plugin's update helper, which
+# watches /boot/changes.txt and downloads the driver for the kernel the update brings.
+net_env() {
+  # rc.local exports the proxy before it installs plugins, but an at/setsid watcher does not
+  # inherit it. Source the same file so the watcher can reach GitHub.
+  [ -r /etc/profile.d/proxy.sh ] && . /etc/profile.d/proxy.sh 2>/dev/null
+  return 0
+}
+
+normalize_kernel() {
+  local k=${1%.}
+  case "$k" in
+    *-Unraid) ;;
+    *) k="$k-Unraid" ;;
+  esac
+  echo "$k"
+}
+
+prune_kernel_pkgs() { # <kernel> <keep>; drop older module packages for the same kernel
+  local kr=$1 keep=$2 f
+  for f in "$PKGROOT/${kr%%-*}"/turing-unlock-module-*-"$kr"-*.txz; do
+    [ -e "$f" ] || continue
+    [ "$f" = "$keep" ] && continue
+    log "removing stale $(basename "$f")"
+    rm -f "$f" "$f.sha256"
+  done
+}
+
+# Ensure a verified module package for <kernel> is on the flash. Sets FETCHED_PKG.
+FETCHED_PKG=
+ensure_module_pkg() {
+  local kr dir json tag asset tmp
+  kr=$(normalize_kernel "${1:-$KR}")
+  FETCHED_PKG=$(module_pkg_for_kernel "$kr")
+  if [ -n "$FETCHED_PKG" ] && pkg_verify "$FETCHED_PKG"; then
+    return 0
+  fi
+  FETCHED_PKG=
+  if ! command -v jq >/dev/null 2>&1; then
+    log "jq is missing; cannot query the release"
+    return 1
+  fi
+  net_env
+  if ! json=$(curl -fsSL --connect-timeout 10 --max-time 30 "$API" 2>/dev/null); then
+    log "cannot reach $API"
+    return 1
+  fi
+  tag=$(printf '%s' "$json" | jq -r '.tag_name // empty' 2>/dev/null)
+  asset=$(printf '%s' "$json" | jq -r --arg s "-$kr-1.txz" \
+            '.assets[]?.name | select(startswith("turing-unlock-module-") and endswith($s))' 2>/dev/null \
+          | sort -V | tail -1)
+  if [ -z "$tag" ] || [ -z "$asset" ]; then
+    log "release ${tag:-?} has no turing-unlock module for $kr"
+    return 1
+  fi
+  dir=$PKGROOT/${kr%%-*}
+  mkdir -p "$dir"
+  tmp=$dir/.${asset}.part
+  log "downloading $asset from release $tag"
+  if ! curl -fsSL --connect-timeout 10 --max-time 900 -o "$tmp" "$DLBASE/$tag/$asset"; then
+    rm -f "$tmp"
+    log "download failed: $DLBASE/$tag/$asset"
+    return 1
+  fi
+  if ! curl -fsSL --connect-timeout 10 --max-time 60 -o "$tmp.sha256" "$DLBASE/$tag/$asset.sha256"; then
+    rm -f "$tmp" "$tmp.sha256"
+    log "download failed: $asset.sha256"
+    return 1
+  fi
+  mv -f "$tmp" "$dir/$asset"
+  mv -f "$tmp.sha256" "$dir/$asset.sha256"
+  if ! pkg_verify "$dir/$asset"; then
+    log "checksum mismatch for $dir/$asset"
+    rm -f "$dir/$asset" "$dir/$asset.sha256"
+    return 1
+  fi
+  FETCHED_PKG=$dir/$asset
+  return 0
+}
+
+# Kernel the pending Unraid update will boot, best effort. Prints nothing when it cannot tell.
+changes_kernel() {
+  local f k v url
+  # During an update the updater leaves the new unRAIDServer.plg on the flash; it names its kernel.
+  for f in /boot/config/plugins/unRAIDServer.plg /boot/plugins/unRAIDServer.plg; do
+    [ -r "$f" ] || continue
+    k=$(sed -n 's/.*<!ENTITY[[:space:]]*kernel[[:space:]]*"\([^"]*\)".*/\1/p' "$f" | head -1)
+    [ -n "$k" ] && { echo "$k"; return 0; }
+  done
+  [ -r "$CHANGES" ] || return 0
+  # Most release notes say it, e.g. "Linux kernel 6.18.38" or "Linux kernel: update to 6.18.58-Unraid."
+  k=$(grep -oiE 'Linux kernel[^0-9]*[0-9]+(\.[0-9]+)+(-Unraid)?' "$CHANGES" 2>/dev/null |
+        grep -oE '[0-9]+(\.[0-9]+)+(-Unraid)?' | sort -V | tail -1)
+  if [ -z "$k" ]; then
+    k=$(grep -oiE '(update to|kernel)[^0-9]*[0-9]+\.[0-9]+\.[0-9]+(-Unraid)?' "$CHANGES" 2>/dev/null |
+          grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-Unraid)?' | sort -V | tail -1)
+  fi
+  [ -n "$k" ] && { echo "$k"; return 0; }
+  # Newer notes only link the release page. Ask Unraid for that version's plugin definition.
+  v=$(sed -n 's/^#\{0,2\}[[:space:]]*Version[[:space:]]*\([0-9][0-9.]*\).*/\1/p' "$CHANGES" 2>/dev/null | head -1)
+  [ -n "$v" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  url=$(curl -fsSL --connect-timeout 10 --max-time 30 https://releases.unraid.net/json 2>/dev/null |
+          jq -r --arg v "$v" '.[]? | select(.version == $v) | .plugin_url' 2>/dev/null | head -1)
+  [ -n "$url" ] || return 0
+  curl -fsSL --connect-timeout 10 --max-time 60 "$url" 2>/dev/null |
+    sed -n 's/.*<!ENTITY[[:space:]]*kernel[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
+}
+
+post_update() {
+  local kr dst
+  if [ -n "${1:-}" ]; then kr=$(normalize_kernel "$1"); else kr=$(changes_kernel); fi
+  [ -n "$kr" ] || kr=$KR
+  kr=$(normalize_kernel "$kr")
+  log "checking the module package for $kr"
+  dst=$(module_pkg_for_kernel "$kr")
+  if [ -z "$dst" ] || ! pkg_verify "$dst"; then
+    if ensure_module_pkg "$kr"; then
+      dst=$FETCHED_PKG
+    else
+      log "no module package for $kr"
+      notify "No turing-unlock module for $kr" "The latest release has no module built for kernel $kr. The cards stay at the stock FP16 rate until a release for that kernel is published." warning
+      return 1
+    fi
+  fi
+  prune_kernel_pkgs "$kr" "$dst"
+  log "module package for $kr: $dst"
+  if [ "$kr" = "$KR" ]; then
+    log "the running kernel has its package; it is installed and loaded at the next start"
+  else
+    notify "Module ready for $kr" "The turing-unlock module for kernel $kr is on the flash. After the reboot, rc.modules installs and loads it before the nvidia driver." normal
+  fi
+  return 0
+}
+
+# Persistent watcher for /boot/changes.txt, started from the plugin's boot step. The updater
+# rewrites the file before the reboot, so the module for the new kernel is already on the flash
+# when rc.modules runs on the new kernel.
+watch() {
+  local i
+  [ "$(cfg ENABLED)" = no ] && return 0
+  if ! command -v inotifywait >/dev/null 2>&1; then
+    log "inotifywait is missing; not watching for Unraid updates"
+    return 0
+  fi
+  if [ ! -f "$CHANGES" ]; then
+    log "no $CHANGES; not watching for Unraid updates"
+    return 0
+  fi
+  log "watching $CHANGES for Unraid updates"
+  while :; do
+    inotifywait -q "$CHANGES" -e move_self,delete_self,modify >/dev/null 2>&1
+    i=0
+    while [ ! -f "$CHANGES" ] && [ "$i" -lt 15 ]; do sleep 1; i=$((i+1)); done
+    sleep 2
+    if [ ! -f "$CHANGES" ]; then
+      log "$CHANGES did not come back; stopping the update watcher"
+      return 0
+    fi
+    post_update || true
+    sleep 5
+  done
 }
 
 # "<bdf> <device-id> <driver|none>" for supported cards
@@ -86,9 +258,13 @@ install_pkgs() {
   local modpkg fwpkg p rc=0
   modpkg=$(module_pkg); fwpkg=$(firmware_pkg)
   if [ -z "$modpkg" ]; then
-    log "no turing-unlock module package for kernel $KR in $PKGROOT/$MAJOR"
-    notify "No module for kernel $KR" "No turing-unlock-module-*-$KR-*.txz in $PKGROOT/$MAJOR. The cards stay at the stock FP16 rate. Re-run the release build for this Unraid version." warning
-    return 1
+    log "no module package for kernel $KR in $PKGROOT/$MAJOR; checking the latest release"
+    if ensure_module_pkg "$KR"; then
+      modpkg=$FETCHED_PKG
+    else
+      notify "No module for kernel $KR" "No turing-unlock-module-*-$KR-*.txz in $PKGROOT/$MAJOR and the latest release has none either. The cards stay at the stock FP16 rate until a release for this kernel is published." warning
+      return 1
+    fi
   fi
   for p in "$fwpkg" "$modpkg"; do
     [ -n "$p" ] || continue
@@ -107,6 +283,7 @@ install_pkgs() {
   if [ -f "$KO" ] && [ "$(modinfo -F vermagic "$KO" 2>/dev/null | cut -d' ' -f1)" != "$KR" ]; then
     log "module vermagic does not match $KR"; rc=1
   fi
+  [ "$rc" = 0 ] && prune_kernel_pkgs "$KR" "$modpkg"
   return $rc
 }
 
@@ -217,6 +394,7 @@ status() {
   echo "settings: enabled=$ENABLED targets=$TARGETS"
   if [ -n "$modpkg" ]; then echo "module package:   $(basename "$modpkg") $(pkg_installed "$modpkg" && echo '(installed)' || echo '(not installed)')"; else echo "module package:   NONE for $KR in $PKGROOT/$MAJOR"; fi
   if [ -n "$fwpkg" ]; then echo "firmware package: $(basename "$fwpkg") $(pkg_installed "$fwpkg" && echo '(installed)' || echo '(not installed)')"; else echo "firmware package: NONE in $PKGROOT/firmware (use 'Build firmware package')"; fi
+  echo "update watcher:  $(pgrep -f 'scripts/gpu-turing-unlock watch' >/dev/null 2>&1 && echo running || echo 'not running')"
   [ -f "$PKGROOT/$MAJOR/BUILD-INFO" ] && sed 's/^/  /' "$PKGROOT/$MAJOR/BUILD-INFO"
   if loaded; then
     echo "module:   loaded (version $(cat /sys/module/turing_unlock/version 2>/dev/null), targets=$(cat /sys/module/turing_unlock/parameters/targets 2>/dev/null))"
@@ -247,7 +425,10 @@ case "$1" in
   start) start ;;
   apply) apply ;;
   firmware) firmware ;;
+  post-update) shift; post_update "${1:-}" ;;
+  watch) watch ;;
+  changes-kernel) changes_kernel ;;
   stop) stop ;;
   status) status ;;
-  *) echo "usage: $0 {start|apply|firmware|stop|status}"; exit 1 ;;
+  *) echo "usage: $0 {start|apply|firmware|post-update [kernel]|watch|changes-kernel|stop|status}"; exit 1 ;;
 esac

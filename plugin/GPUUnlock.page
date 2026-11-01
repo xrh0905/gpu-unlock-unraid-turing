@@ -55,6 +55,23 @@ several minutes.
 
 > After it finishes, reboot so the module loads with the firmware in place.
 
+### Unraid updates
+
+An Unraid OS update changes the kernel, and a `turing_unlock.ko` built for the old kernel will not
+load. The plugin watches `/boot/changes.txt`; when an update is staged it reads the kernel the new
+OS will boot and downloads the matching module package (with its SHA-256) from the latest release
+to the flash, so `rc.modules` installs it on the first boot of the new kernel. If the release has no
+module for that kernel yet, you get a notification instead and the cards stay at the stock rate.
+
+<form markdown="1" method="POST" action="/update.php" target="progressFrame">
+<input type="hidden" name="#command" value="/plugins/<?=$plugin?>/scripts/gpu-turing-unlock">
+<input type="hidden" name="#arg[1]" value="post-update">
+: <input type="submit" value="Check for the pending kernel's module">
+</form>
+
+> This only downloads the package. The module is installed and loaded at the next boot, before
+> `nvidia`.
+
 ### Status
 <pre class="gpuunlock"><?=$status?></pre>
 

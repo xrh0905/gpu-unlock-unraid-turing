@@ -30,9 +30,36 @@ its own plugin install step — both before `nvidia-driver.plg` runs `modprobe n
    `TU102 FEAT UNLOCKED` and `pci 0000:3b:00.0: turing_unlock: unlocked`. The status page on the
    settings page shows the same.
 
-The first boot after installing downloads the module package for your exact kernel from the
-release. Packages for kernels not in the release are skipped; the plugin sends a notification and
-leaves the card at the stock rate.
+The plugin downloads the module package for your kernel at install. If the package is missing, the
+control script fetches it from the latest release on the next start; a kernel with no module in the
+release sends a notification and leaves the card at the stock rate.
+
+### Unraid updates
+
+An Unraid OS update changes the kernel, and a module built for the old kernel will not load.
+Unraid rewrites `/boot/changes.txt` while it stages the update, before the reboot. The plugin runs
+a small watcher for that file (the same approach as the official nvidia-driver plugin's update
+helper): it reads the kernel the new OS will boot, then downloads
+`turing-unlock-module-<ver>-<new-kernel>-1.txz` and its `.sha256` from the latest release into
+`/boot/config/plugins/gpu-turing-unlock/packages/<major>/`. On the first boot of the new kernel
+`rc.modules` installs it and loads `turing_unlock` before the nvidia driver, so no extra reboot is
+needed after the OS update itself.
+
+Where the kernel comes from, in order:
+
+1. `<!ENTITY kernel "...">` in the staged `/boot/config/plugins/unRAIDServer.plg`.
+2. The `Linux kernel` line in `/boot/changes.txt` (for example `Linux kernel: update to 6.18.58-Unraid.`).
+3. The new OS version in `/boot/changes.txt` looked up in `https://releases.unraid.net/json`, whose
+   `unRAIDServer.plg` names the kernel.
+
+If the latest release has no module for that kernel, the watcher sends a notification and the cards
+stay at the stock rate. To support a new Unraid kernel, run the release workflow with the new
+Unraid version in `versions` (see `.github/workflows/release.yml`); the next release then carries
+the module and the watcher picks it up.
+
+The settings page has **Check for the pending kernel's module**, which runs the same step on
+demand. At boot, `start` also fetches the module for the running kernel if the flash does not have
+it, so a missed watcher window still recovers before `nvidia` loads.
 
 ### Firmware
 
@@ -122,8 +149,11 @@ The plugin's control script has these commands:
 
 ```bash
 /usr/local/emhttp/plugins/gpu-turing-unlock/scripts/gpu-turing-unlock \
-  status|start|apply|firmware|stop
+  status|start|apply|firmware|post-update [kernel]|watch|changes-kernel|stop
 ```
+
+`post-update` fetches the module for the pending (or given) kernel; `watch` is the long-running
+`/boot/changes.txt` watcher started at boot; `changes-kernel` prints what the watcher parsed.
 
 ## Notes and limits
 
@@ -132,8 +162,9 @@ The plugin's control script has these commands:
 * **Display card:** the screen can stay blank from the unlock until `nvidia-drm` takes over.
   Untested with Unraid GUI mode.
 * **VFIO:** a card bound to `vfio-pci` is skipped. The unlock would not survive the VM start's FLR.
-* **Unraid updates:** a new kernel needs a new module package. Add the Unraid version to the
-  workflow input (or tag a release) and rebuild. The firmware package is kernel-independent.
+* **Unraid updates:** a new kernel needs a new module package. The watcher fetches it from the
+  latest release before the reboot; if the release predates that kernel, add the Unraid version to
+  the workflow input (or tag a release) and rebuild. The firmware package is kernel-independent.
 * **Remove:** Plugins page. Package files stay in
   `/boot/config/plugins/gpu-turing-unlock/packages` unless deleted. The card stays unlocked until
   it loses power.

@@ -209,6 +209,10 @@ jobs:
 
           RTD3 is disabled for the nvidia driver while this plugin is installed: the unlock is
           volatile and an idle D3cold transition clears it.
+
+          After an Unraid OS update, the plugin's watcher reads the kernel the new OS will boot and
+          downloads the matching module from the latest release before the reboot, so `rc.modules`
+          installs it on the first boot of that kernel.
           EOF
           ls -l dist dist/assets
 

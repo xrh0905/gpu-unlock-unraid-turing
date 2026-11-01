@@ -102,6 +102,7 @@ def main() -> int:
             f"- turing-unlock {args.upstream_version}"
             + (f" ({args.upstream_ref[:12]})" if args.upstream_ref else "")
             + "\n- Module packages for Unraid kernels: " + ", ".join(kernels) + "\n"
+            + "- After an Unraid OS update, watch /boot/changes.txt and fetch the module for the new kernel from the latest release before the reboot.\n"
         )
         if any(args.packages.glob("firmware/*.txz")):
             changes += "- Firmware package: pinned NVIDIA 610.43.03 (NVIDIA terms; see NOTICE.md).\n"
