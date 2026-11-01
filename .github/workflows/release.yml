@@ -21,10 +21,6 @@ on:
         description: 'Create/update the GitHub release'
         type: boolean
         default: true
-      build_firmware:
-        description: 'Also build the firmware package as a workflow artifact (not a release asset)'
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -121,29 +117,37 @@ jobs:
 
   firmware:
     needs: plan
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_firmware }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache the pinned NVIDIA inputs
+        uses: actions/cache@v4
+        with:
+          path: cache/firmware-work/inputs
+          key: firmware-${{ hashFiles('firmware/artifacts-610.43.03.json') }}-v1
+
       - name: Build the container
         run: docker build -f build/Dockerfile --build-arg BASE_IMAGE=gcc:15 -t turing-unlock-build .
-      - name: Build the firmware package (local artifact, never a release asset)
+
+      - name: Build the firmware package
         run: |
           mkdir -p out/firmware cache
           docker run --rm \
             --entrypoint /opt/turing-unlock-build/firmware/build-firmware.sh \
             -v "$PWD/out:/out" -v "$PWD/cache:/cache" \
             turing-unlock-build /out/firmware /cache/firmware-work
+
       - uses: actions/upload-artifact@v4
         with:
-          name: firmware-local-only
+          name: firmware
           path: out/firmware/
           if-no-files-found: error
 
   release:
-    needs: [plan, module]
-    if: ${{ needs.module.result == 'success' }}
+    needs: [plan, module, firmware]
+    if: ${{ needs.module.result == 'success' && needs.firmware.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -161,13 +165,20 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          mkdir -p dist/packages
-          for txz in artifacts/out/*/*.txz; do
-            kr=$(basename "$(dirname "$txz")")
+          mkdir -p dist/packages/firmware
+          while IFS= read -r f; do
+            kr=$(basename "$(dirname "$f")")
+            case "$kr" in
+              *-Unraid) ;;
+              *) kr=$(echo "$f" | sed -n 's/.*-\([0-9][0-9.]*-Unraid\)-1\.txz\(.sha256\)\{0,1\}$/\1/p') ;;
+            esac
             major=${kr%%-*}
+            [ -n "$major" ] && [ "$major" != "$kr" ] || { echo "cannot derive kernel from $f" >&2; exit 1; }
             mkdir -p "dist/packages/$major"
-            cp "$txz" "$txz.sha256" "dist/packages/$major/"
-          done
+            cp "$f" "dist/packages/$major/"
+          done < <(find artifacts -type f -name 'turing-unlock-module-*.txz*')
+          while IFS= read -r f; do cp "$f" dist/packages/firmware/; done < <(find artifacts -type f -name 'turing-unlock-firmware-*.txz*')
+          test -f dist/packages/firmware/turing-unlock-firmware-*.txz
           test -n "$(find dist/packages -name '*.txz' -print -quit)"
           python3 build/make-plg.py \
             --version "$VERSION" \
@@ -187,12 +198,11 @@ jobs:
           - Module packages: $(find dist/packages -name '*.txz' -printf '%f ' | sed 's/ $//').
           - Plugin: \`gpu-turing-unlock.plg\`.
 
-          The NVIDIA firmware package is **not** included. NVIDIA's license does not clearly allow
-          redistributing the blobs. After installing the plugin, open Settings > User Utilities >
-          Turing Unlock and click "Build firmware package", or run
-          \`/usr/local/emhttp/plugins/gpu-turing-unlock/scripts/gpu-turing-unlock firmware\`.
-          It downloads the pinned 610.43.03 inputs from NVIDIA/CachyOS, verifies their SHA-256,
-          and builds the package locally. Reboot afterwards.
+          The release also carries \`turing-unlock-firmware-610.43.03-noarch-1.txz\`, built from the
+          pinned NVIDIA 610.43.03 inputs with SHA-256 checks at every step. The files are unchanged
+          NVIDIA firmware and carry NVIDIA's license (\`NOTICE.md\` in the package). If you do not
+          want to redistribute them, remove that asset and use the plugin's local
+          \`gpu-turing-unlock firmware\` command instead.
 
           RTD3 is disabled for the nvidia driver while this plugin is installed: the unlock is
           volatile and an idle D3cold transition clears it.

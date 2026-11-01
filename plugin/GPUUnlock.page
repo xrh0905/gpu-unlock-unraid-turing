@@ -40,16 +40,17 @@ Cards to unlock (targets):
 : <input type="submit" value="Apply"><input type="button" value="Done" onclick="done()">
 </form>
 
-### Firmware (required, built locally)
+### Firmware
 
-The firmware package is **not** in the GitHub release: NVIDIA's license does not clearly allow redistributing the
-blobs, so the plugin downloads the pinned 610.43.03 inputs from NVIDIA/CachyOS on this machine, verifies their
-SHA-256, and builds the package locally. It needs `python3`, `zstd`, about 1 GB of free space and several minutes.
+The plugin release includes the pinned 610.43.03 firmware package, and the plugin installs it automatically. If it
+is missing or you want to rebuild it, this action downloads the pinned inputs from NVIDIA/CachyOS on this machine,
+verifies their SHA-256, and packs the package locally. It needs `python3`, `zstd`, about 1 GB of free space and
+several minutes.
 
 <form markdown="1" method="POST" action="/update.php" target="progressFrame">
 <input type="hidden" name="#command" value="/plugins/<?=$plugin?>/scripts/gpu-turing-unlock">
 <input type="hidden" name="#arg[1]" value="firmware">
-: <input type="submit" value="Build firmware package">
+: <input type="submit" value="Rebuild firmware package">
 </form>
 
 > After it finishes, reboot so the module loads with the firmware in place.

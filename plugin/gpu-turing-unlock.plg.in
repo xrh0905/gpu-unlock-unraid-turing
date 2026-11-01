@@ -14,8 +14,9 @@
   repository's GitHub Actions release for each Unraid kernel:
     /boot/config/plugins/gpu-turing-unlock/packages/<major>/turing-unlock-module-<ver>-<kernel>-1.txz
     /boot/config/plugins/gpu-turing-unlock/packages/firmware/turing-unlock-firmware-610.43.03-noarch-1.txz
-  The firmware package is deliberately not published: NVIDIA's license does not clearly permit
-  redistributing the blobs. The plugin builds it locally from the pinned inputs on request.
+  The firmware package is published next to the module packages; it is NVIDIA firmware under
+  NVIDIA's terms (NOTICE.md and the license are inside the package). The control script can also
+  rebuild it locally from the pinned inputs.
   Keep this file named "gpu-turing-unlock.plg": Unraid installs *.plg in file-name order, and this
   must run before "nvidia-driver.plg".
 -->

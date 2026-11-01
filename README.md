@@ -24,8 +24,8 @@ its own plugin install step — both before `nvidia-driver.plg` runs `modprobe n
 3. Set **Cards to unlock** to the BDF of the host card, e.g. `0000:3b:00.0` (`lspci -D | grep -i nvidia`).
    `all` also works, but a card passed through to a VM is bound to `vfio-pci` and is skipped — and a
    VM's FLR would clear the unlock anyway.
-4. Click **Build firmware package**. The firmware is not in the release (see below); the plugin
-   downloads the pinned NVIDIA 610.43.03 inputs, verifies their SHA-256, and packs them locally.
+4. The release also carries the pinned firmware package; the plugin downloads it with the module.
+   If it is missing (or you want to rebuild it yourself), click **Rebuild firmware package**.
 5. Reboot. Check `dmesg | grep turing_unlock`: a good run ends with
    `TU102 FEAT UNLOCKED` and `pci 0000:3b:00.0: turing_unlock: unlocked`. The status page on the
    settings page shows the same.
@@ -34,13 +34,15 @@ The first boot after installing downloads the module package for your exact kern
 release. Packages for kernels not in the release are skipped; the plugin sends a notification and
 leaves the card at the stock rate.
 
-### Firmware is deliberately not in the release
+### Firmware
 
-`gsp_tu10x.bin` and the other five files are NVIDIA firmware. Upstream's
-[`firmware/NOTICE.md`](firmware/NOTICE.md) says personal local packaging is the initial delivery
-target and redistribution approval is not claimed. A public GitHub release would redistribute
-them, so this repository publishes only the GPL-2.0 module, the plugin definition and checksums.
-The plugin builds the firmware on your server from the exact inputs upstream pins.
+The release carries `turing-unlock-firmware-610.43.03-noarch-1.txz`, generated in CI from the exact
+inputs upstream pins, with every input and output checked against its SHA-256. `gsp_tu10x.bin` and
+the other five files are unchanged NVIDIA firmware and stay under NVIDIA's terms; the package
+contains `NOTICE.md` and the NVIDIA Driver License Agreement. Upstream's
+[`firmware/NOTICE.md`](firmware/NOTICE.md) notes that redistribution approval is not claimed — if
+that matters for your distribution, delete the firmware asset from the release and use the plugin's
+local **Rebuild firmware package** action, which downloads from NVIDIA/CachyOS on the server.
 
 ### RTD3
 
@@ -56,8 +58,9 @@ For each Unraid version in the workflow matrix (default `7.3.2`, `7.3.3`, `7.3.4
 | Asset | Contents |
 |---|---|
 | `turing-unlock-module-2.0.0-<kernel>-1.txz` | `turing_unlock.ko` in `/lib/modules/<kernel>/extra/`, plus `/etc/rc.d/rc.modules-<kernel>` |
+| `turing-unlock-firmware-610.43.03-noarch-1.txz` | Six pinned NVIDIA 610.43.03 files in `/lib/firmware/turing-unlock/610.43.03/` |
 | `*.txz.sha256` | Checksum used by `rc.modules` and the plugin |
-| `gpu-turing-unlock.plg` | Plugin definition; downloads the matching module package and embeds the firmware builder |
+| `gpu-turing-unlock.plg` | Plugin definition; downloads the matching module and firmware packages and embeds the firmware builder |
 | `SHA256SUMS` | Checksums for the release assets |
 
 Unraid versions in the default matrix: 7.3.2 → kernel 6.18.38, 7.3.3 → 6.18.54, 7.3.4 → 6.18.58.
