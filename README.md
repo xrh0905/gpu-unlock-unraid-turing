@@ -68,7 +68,8 @@ A kernel without a package is safe: nothing loads and the plugin notifies.
 
 ## Build locally
 
-Any Linux host with Docker:
+Any Linux host with Docker (if Docker is root-only, run `sudo ./build/run.sh` or add your user to the
+`docker` group):
 
 ```bash
 # for the kernel of an Unraid release (downloads its ~1.2 GB release zip once)

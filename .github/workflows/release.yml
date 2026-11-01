@@ -190,7 +190,10 @@ jobs:
             --firmware-dir firmware \
             --out dist/gpu-turing-unlock.plg \
             --upstream-ref "$UPSTREAM_REF"
-          ( cd dist && sha256sum gpu-turing-unlock.plg packages/*/* > SHA256SUMS )
+          mkdir -p dist/assets
+          cp dist/gpu-turing-unlock.plg dist/assets/
+          find dist/packages -type f -exec cp {} dist/assets/ \;
+          ( cd dist/assets && sha256sum * > ../SHA256SUMS )
           cat > dist/RELEASE-NOTES.md <<EOF
           Turing Unlock $VERSION for Unraid.
 
@@ -207,7 +210,7 @@ jobs:
           RTD3 is disabled for the nvidia driver while this plugin is installed: the unlock is
           volatile and an idle D3cold transition clears it.
           EOF
-          ls -l dist dist/packages/*
+          ls -l dist dist/assets
 
       - name: Publish release
         if: ${{ needs.plan.outputs.publish == 'true' }}
@@ -218,13 +221,13 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/gpu-turing-unlock.plg dist/SHA256SUMS dist/RELEASE-NOTES.md dist/packages/*/* --clobber
+            gh release upload "$TAG" dist/SHA256SUMS dist/RELEASE-NOTES.md dist/assets/* --clobber
             gh release edit "$TAG" --title "Turing Unlock $VERSION" --notes-file dist/RELEASE-NOTES.md
           elif git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-            gh release create "$TAG" dist/gpu-turing-unlock.plg dist/SHA256SUMS dist/RELEASE-NOTES.md dist/packages/*/* \
+            gh release create "$TAG" dist/SHA256SUMS dist/RELEASE-NOTES.md dist/assets/* \
               --verify-tag --title "Turing Unlock $VERSION" --notes-file dist/RELEASE-NOTES.md
           else
-            gh release create "$TAG" dist/gpu-turing-unlock.plg dist/SHA256SUMS dist/RELEASE-NOTES.md dist/packages/*/* \
+            gh release create "$TAG" dist/SHA256SUMS dist/RELEASE-NOTES.md dist/assets/* \
               --target "$GITHUB_SHA" --title "Turing Unlock $VERSION" --notes-file dist/RELEASE-NOTES.md
           fi
 

@@ -37,6 +37,7 @@ fi
 # flash copy so it survives both this boot and the next.
 RTD3='# Written by gpu-turing-unlock. The unlock is volatile; D3cold clears it.
 options nvidia NVreg_DynamicPowerManagement=0x00'
+mkdir -p /etc/modprobe.d /boot/config/modprobe.d
 for f in /etc/modprobe.d/zz-turing-unlock.conf /boot/config/modprobe.d/zz-turing-unlock.conf; do
   if [ ! -f "$f" ]; then
     printf '%s\n' "$RTD3" > "$f" 2>/dev/null || true

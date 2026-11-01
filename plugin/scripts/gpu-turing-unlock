@@ -169,10 +169,13 @@ firmware() {
     [ -x "$FWBUILD" ] || { notify "Cannot build firmware" "$FWBUILD is missing; reinstall the plugin." alert; return 1; }
     log "building the pinned $NV firmware package; this downloads ~500 MB and can take several minutes"
     mkdir -p "$PKGROOT/firmware"
-    if ! "$FWBUILD" "$PKGROOT/firmware" "${TURING_UNLOCK_WORKDIR:-/var/tmp/turing-unlock-firmware.$$}"; then
+    local work=${TURING_UNLOCK_WORKDIR:-/var/tmp/turing-unlock-firmware.$$}
+    if ! "$FWBUILD" "$PKGROOT/firmware" "$work"; then
+      rm -rf "$work"
       notify "Firmware build failed" "See the output on Settings - User Utilities - Turing Unlock. The cards stay at the stock FP16 rate." alert
       return 1
     fi
+    rm -rf "$work"
     fwpkg=$(firmware_pkg)
   fi
   [ -n "$fwpkg" ] || { notify "Firmware build failed" "No package was produced." alert; return 1; }
