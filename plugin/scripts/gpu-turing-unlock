@@ -148,14 +148,10 @@ ensure_module_pkg() {
 
 # Kernel the pending Unraid update will boot, best effort. Prints nothing when it cannot tell.
 changes_kernel() {
-  local f k v url
-  # During an update the updater leaves the new unRAIDServer.plg on the flash; it names its kernel.
-  for f in /boot/config/plugins/unRAIDServer.plg /boot/plugins/unRAIDServer.plg; do
-    [ -r "$f" ] || continue
-    k=$(sed -n 's/.*<!ENTITY[[:space:]]*kernel[[:space:]]*"\([^"]*\)".*/\1/p' "$f" | head -1)
-    [ -n "$k" ] && { echo "$k"; return 0; }
-  done
-  [ -r "$CHANGES" ] || return 0
+  local f k v pv url
+  v=""
+  [ -r "$CHANGES" ] &&
+    v=$(sed -n 's/^#\{0,2\}[[:space:]]*Version[[:space:]]*\([0-9][0-9.]*\).*/\1/p' "$CHANGES" 2>/dev/null | head -1)
   # Most release notes say it, e.g. "Linux kernel 6.18.38" or "Linux kernel: update to 6.18.58-Unraid."
   k=$(grep -oiE 'Linux kernel[^0-9]*[0-9]+(\.[0-9]+)+(-Unraid)?' "$CHANGES" 2>/dev/null |
         grep -oE '[0-9]+(\.[0-9]+)+(-Unraid)?' | sort -V | tail -1)
@@ -164,8 +160,17 @@ changes_kernel() {
           grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-Unraid)?' | sort -V | tail -1)
   fi
   [ -n "$k" ] && { echo "$k"; return 0; }
+  # During an update the updater leaves the new unRAIDServer.plg on the flash; it names its kernel.
+  # Only trust it for the version changes.txt announces, so a leftover plg for the running OS
+  # cannot hide the kernel of the update.
+  for f in ${TURING_UNLOCK_SERVER_PLGS:-/boot/config/plugins/unRAIDServer.plg /boot/plugins/unRAIDServer.plg}; do
+    [ -r "$f" ] || continue
+    pv=$(sed -n 's/.*<!ENTITY[[:space:]]*version[[:space:]]*"\([^"]*\)".*/\1/p' "$f" | head -1)
+    [ -z "$v" ] || [ "$pv" = "$v" ] || continue
+    k=$(sed -n 's/.*<!ENTITY[[:space:]]*kernel[[:space:]]*"\([^"]*\)".*/\1/p' "$f" | head -1)
+    [ -n "$k" ] && { echo "$k"; return 0; }
+  done
   # Newer notes only link the release page. Ask Unraid for that version's plugin definition.
-  v=$(sed -n 's/^#\{0,2\}[[:space:]]*Version[[:space:]]*\([0-9][0-9.]*\).*/\1/p' "$CHANGES" 2>/dev/null | head -1)
   [ -n "$v" ] || return 0
   command -v jq >/dev/null 2>&1 || return 0
   url=$(curl -fsSL --connect-timeout 10 --max-time 30 https://releases.unraid.net/json 2>/dev/null |

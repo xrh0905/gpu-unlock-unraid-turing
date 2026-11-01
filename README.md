@@ -47,8 +47,11 @@ needed after the OS update itself.
 
 Where the kernel comes from, in order:
 
-1. `<!ENTITY kernel "...">` in the staged `/boot/config/plugins/unRAIDServer.plg`.
-2. The `Linux kernel` line in `/boot/changes.txt` (for example `Linux kernel: update to 6.18.58-Unraid.`).
+1. The `Linux kernel` line in `/boot/changes.txt` (for example
+   `Linux kernel: update to 6.18.58-Unraid.`).
+2. `<!ENTITY kernel "...">` in the staged `/boot/config/plugins/unRAIDServer.plg`, but only when its
+   `version` matches the version `/boot/changes.txt` announces (a leftover plg for the running OS
+   is ignored).
 3. The new OS version in `/boot/changes.txt` looked up in `https://releases.unraid.net/json`, whose
    `unRAIDServer.plg` names the kernel.
 
