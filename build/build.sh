@@ -122,9 +122,9 @@ else
   if [ ! -d "$SRC/.git" ]; then
     git clone -q "$TURING_UNLOCK_REPO" "$SRC"
   fi
-  git -C "$SRC" fetch -q origin "$TURING_UNLOCK_REF" 2>/dev/null || git -C "$SRC" fetch -q origin
-  git -C "$SRC" -c advice.detachedHead=false checkout -q --detach "$TURING_UNLOCK_REF" 2>/dev/null \
-    || git -C "$SRC" -c advice.detachedHead=false checkout -q --detach "origin/$TURING_UNLOCK_REF"
+  git -c safe.directory="*" -C "$SRC" fetch -q origin "$TURING_UNLOCK_REF" 2>/dev/null || git -c safe.directory="*" -C "$SRC" fetch -q origin
+  git -c safe.directory="*" -C "$SRC" -c advice.detachedHead=false checkout -q --detach "$TURING_UNLOCK_REF" 2>/dev/null \
+    || git -c safe.directory="*" -C "$SRC" -c advice.detachedHead=false checkout -q --detach "origin/$TURING_UNLOCK_REF"
 fi
 COMMIT=$(git -c safe.directory="*" -C "$SRC" rev-parse HEAD 2>/dev/null || echo unknown)
 VERSION=$(cat "$SRC/VERSION")
