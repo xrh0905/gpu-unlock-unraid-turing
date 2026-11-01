@@ -1,0 +1,70 @@
+Menu="Utilities"
+Title="Turing Unlock (FP16 tensor cores)"
+Icon="unlock-alt"
+Tag="unlock-alt"
+---
+<?php
+$plugin = 'gpu-turing-unlock';
+$cfg = parse_plugin_cfg($plugin);
+$status = htmlspecialchars(shell_exec("/usr/local/emhttp/plugins/$plugin/scripts/gpu-turing-unlock status 2>&1") ?? '');
+?>
+<style>pre.gpuunlock{background:var(--background-color,#1c1b1b);padding:10px;white-space:pre-wrap}</style>
+
+Loads **turing_unlock** ([nlzy/turing-unlock](https://github.com/nlzy/turing-unlock)) at boot, before the nvidia-driver plugin loads `nvidia`.
+It unlocks the full FP16 tensor-core rate of NVIDIA Turing cards, primarily the TU102 **RTX 2080 Ti** (`10de:1e07`).
+Dense FP16 GEMM (LLM prefill, diffusion) gets faster; memory-bound work (LLM decode) does not.
+
+The module must run before `nvidia` binds the card, so **settings take effect at the next boot**. The plugin ships an
+`/etc/rc.d/rc.modules-<kernel>` hook; if the module is already loaded, nothing changes until a reboot.
+
+<form markdown="1" method="POST" action="/update.php" target="progressFrame">
+<input type="hidden" name="#file" value="<?=$plugin?>/<?=$plugin?>.cfg">
+<input type="hidden" name="#command" value="/plugins/<?=$plugin?>/scripts/gpu-turing-unlock">
+<input type="hidden" name="#arg[1]" value="apply">
+
+Enable at boot:
+: <select name="ENABLED">
+  <?=mk_option($cfg['ENABLED'], "yes", "Yes")?>
+  <?=mk_option($cfg['ENABLED'], "no", "No")?>
+  </select>
+
+> **No** installs nothing and loads nothing.
+
+Cards to unlock (targets):
+: <input type="text" name="TARGETS" value="<?=htmlspecialchars($cfg['TARGETS'])?>" class="wide">
+
+> `all` = every supported, unclaimed card. Or a comma-separated list of PCI addresses as shown in the status below
+> (for example `0000:3b:00.0`). Cards bound to `vfio-pci` are skipped: a VM's FLR clears the unlock.
+
+&nbsp;
+: <input type="submit" value="Apply"><input type="button" value="Done" onclick="done()">
+</form>
+
+### Firmware (required, built locally)
+
+The firmware package is **not** in the GitHub release: NVIDIA's license does not clearly allow redistributing the
+blobs, so the plugin downloads the pinned 610.43.03 inputs from NVIDIA/CachyOS on this machine, verifies their
+SHA-256, and builds the package locally. It needs `python3`, `zstd`, about 1 GB of free space and several minutes.
+
+<form markdown="1" method="POST" action="/update.php" target="progressFrame">
+<input type="hidden" name="#command" value="/plugins/<?=$plugin?>/scripts/gpu-turing-unlock">
+<input type="hidden" name="#arg[1]" value="firmware">
+: <input type="submit" value="Build firmware package">
+</form>
+
+> After it finishes, reboot so the module loads with the firmware in place.
+
+### Status
+<pre class="gpuunlock"><?=$status?></pre>
+
+### Notes
+
+* **RTD3 is disabled** for `nvidia` (`NVreg_DynamicPowerManagement=0x00`, written to
+  `/etc/modprobe.d/zz-turing-unlock.conf` and `/boot/config/modprobe.d/zz-turing-unlock.conf`). The unlock is volatile;
+  an idle D3cold transition clears it. This affects every NVIDIA GPU in the server.
+* **Cold boot** may be required. If the log says the card was already initialised since power-on, shut down fully,
+  wait a few seconds and power on. A warm reboot is usually enough.
+* **Display card:** the screen can stay blank from the unlock until `nvidia-drm` takes over. Untested with Unraid GUI mode.
+* **Uninstall:** remove the plugin from the Plugins page. The module is unloaded, packages are removed, and the RTD3
+  file is deleted. The firmware package stays in `/boot/config/plugins/gpu-turing-unlock/packages/firmware` unless you
+  delete it. An unlocked card stays unlocked until it loses power.

@@ -1,0 +1,88 @@
+<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+<!ENTITY name      "gpu-turing-unlock">
+<!ENTITY author    "xrh0905">
+<!ENTITY version   "@@VERSION@@">
+<!ENTITY pluginURL "@@PLUGIN_URL@@">
+<!ENTITY plugin    "/boot/config/plugins/&name;">
+<!ENTITY emhttp    "/usr/local/emhttp/plugins/&name;">
+]>
+
+<!--
+  Turing Unlock for Unraid: loads nlzy/turing-unlock's turing_unlock kernel module at boot, before
+  the nvidia-driver plugin loads nvidia. The module and firmware packages are produced by this
+  repository's GitHub Actions release for each Unraid kernel:
+    /boot/config/plugins/gpu-turing-unlock/packages/<major>/turing-unlock-module-<ver>-<kernel>-1.txz
+    /boot/config/plugins/gpu-turing-unlock/packages/firmware/turing-unlock-firmware-610.43.03-noarch-1.txz
+  The firmware package is deliberately not published: NVIDIA's license does not clearly permit
+  redistributing the blobs. The plugin builds it locally from the pinned inputs on request.
+  Keep this file named "gpu-turing-unlock.plg": Unraid installs *.plg in file-name order, and this
+  must run before "nvidia-driver.plg".
+-->
+<PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;"
+        launch="Settings/GPUUnlock" icon="unlock-alt" min="7.0.0"
+        support="https://github.com/xrh0905/gpu-unlock-unraid-turing/issues">
+
+<CHANGES>
+@@CHANGES@@
+</CHANGES>
+
+<!-- start clean: the plugin manager skips files that already exist -->
+<FILE Run="/bin/bash">
+<INLINE>
+rm -rf &emhttp;
+mkdir -p &plugin;/packages/firmware
+</INLINE>
+</FILE>
+
+<!-- settings defaults (overridden by /boot/config/plugins/gpu-turing-unlock/gpu-turing-unlock.cfg) -->
+<FILE Name="&emhttp;/default.cfg">
+<INLINE>
+ENABLED="yes"
+TARGETS="all"
+</INLINE>
+</FILE>
+
+@@PACKAGE_FILES@@
+
+<!-- control script, settings page, and the locally run firmware generators -->
+<FILE Name="&emhttp;/scripts/gpu-turing-unlock" Mode="0755">
+<INLINE>@@CONTROL_SCRIPT@@</INLINE>
+</FILE>
+
+<FILE Name="&emhttp;/GPUUnlock.page">
+<INLINE>@@PAGE@@</INLINE>
+</FILE>
+
+@@FIRMWARE_FILES@@
+
+<!-- install / every boot: the module package also installs rc.modules-<kernel>, which Unraid runs
+     before rc.local; this is the fallback for the first install and for a kernel whose package
+     arrived after rc.modules. Always exits 0: a failing Run moves the plugin to plugins-error. -->
+<FILE Run="/bin/bash">
+<INLINE><![CDATA[
+/usr/local/emhttp/plugins/gpu-turing-unlock/scripts/gpu-turing-unlock start || true
+echo ""
+echo "Turing Unlock plugin installed. Settings > User Utilities > Turing Unlock"
+exit 0
+]]></INLINE>
+</FILE>
+
+<!-- uninstall: unload, remove the installed packages, keep the package files on the flash -->
+<FILE Run="/bin/bash" Method="remove">
+<INLINE><![CDATA[
+/usr/local/emhttp/plugins/gpu-turing-unlock/scripts/gpu-turing-unlock stop 2>/dev/null
+PKGDB=/var/lib/pkgtools/packages; [ -d "$PKGDB" ] || PKGDB=/var/log/packages
+for p in "$PKGDB"/turing-unlock-module-* "$PKGDB"/turing-unlock-firmware-*; do
+  [ -e "$p" ] && removepkg "$(basename "$p")" >/dev/null 2>&1
+done
+rm -rf /usr/local/emhttp/plugins/gpu-turing-unlock
+rm -f /boot/config/plugins/gpu-turing-unlock/gpu-turing-unlock.cfg
+rm -f /etc/modprobe.d/zz-turing-unlock.conf /boot/config/modprobe.d/zz-turing-unlock.conf
+echo "Turing Unlock removed. Package files were left in /boot/config/plugins/gpu-turing-unlock/packages"
+echo "(delete that directory if you don't want them). An unlocked card stays unlocked until it loses power."
+exit 0
+]]></INLINE>
+</FILE>
+
+</PLUGIN>

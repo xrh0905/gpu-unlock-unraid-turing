@@ -1,0 +1,11 @@
+.git
+out
+cache
+dist
+artifacts
+README.md
+__pycache__
+*.pyc
+.github
+gpu-*.md
+plugin

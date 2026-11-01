@@ -1,0 +1,68 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-2.0-only
+# Installed by turing-unlock-module as /etc/rc.d/rc.modules-<kernel>.
+# Unraid's rc.modules installs /boot/config/plugins/*/packages/<major>/*.txz, runs depmod, then
+# executes this hook. That is before rc.local installs the plugins, and therefore before the
+# nvidia-driver plugin runs "modprobe nvidia": the only window where the unlock can run.
+#
+# Always exits 0. A failure here must not stop the boot or the nvidia driver.
+
+PLG=gpu-turing-unlock
+KR=$(uname -r)
+MAJOR=${KR%%-*}
+CFG=/boot/config/plugins/$PLG/$PLG.cfg
+PKGROOT=/boot/config/plugins/$PLG/packages
+PKGDB=/var/lib/pkgtools/packages
+[ -d "$PKGDB" ] || PKGDB=/var/log/packages
+KO=/lib/modules/$KR/extra/turing_unlock.ko
+
+val() {
+  local v
+  v=$(grep -E "^$1=" "$CFG" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"\r')
+  echo "$v"
+}
+
+[ -f "$KO" ] || exit 0
+[ "$(val ENABLED)" = no ] && exit 0
+TARGETS=$(val TARGETS)
+TARGETS=$(echo "$TARGETS" | tr -d ' ' | tr 'A-F' 'a-f')
+[ -z "$TARGETS" ] && TARGETS=all
+if [ "$TARGETS" != all ] && ! [[ $TARGETS =~ ^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f](,[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f])*$ ]]; then
+  echo "turing_unlock: invalid targets '$TARGETS' in $CFG; not loading"
+  exit 0
+fi
+
+# Keep the GPU out of D3cold. The unlock writes volatile GPU state; RTD3 (the nvidia driver's
+# default on Turing) powers the card down when idle and clears it. Write both the live and the
+# flash copy so it survives both this boot and the next.
+RTD3='# Written by gpu-turing-unlock. The unlock is volatile; D3cold clears it.
+options nvidia NVreg_DynamicPowerManagement=0x00'
+for f in /etc/modprobe.d/zz-turing-unlock.conf /boot/config/modprobe.d/zz-turing-unlock.conf; do
+  if [ ! -f "$f" ]; then
+    printf '%s\n' "$RTD3" > "$f" 2>/dev/null || true
+  fi
+done
+
+# The firmware is a separate, kernel-independent package under packages/firmware/. Install it
+# here, before the module requests it.
+FW=$(ls -1 "$PKGROOT"/firmware/turing-unlock-firmware-*.txz 2>/dev/null | sort -V | tail -1)
+FW_FILES=$(/sbin/modinfo -F firmware "$KO" 2>/dev/null || true)
+fw_missing=0
+for f in $FW_FILES; do
+  [ -f "/lib/firmware/$f" ] || { fw_missing=1; break; }
+done
+if [ -n "$FW" ] && { [ "$fw_missing" = 1 ] || [ ! -e "$PKGDB/$(basename "$FW" .txz)" ]; }; then
+  if [ ! -f "$FW.sha256" ] || ( cd "$(dirname "$FW")" && sha256sum -c --quiet "$(basename "$FW").sha256" >/dev/null 2>&1 ); then
+    /sbin/installpkg "$FW" >/dev/null 2>&1 || { echo "turing_unlock: could not install $(basename "$FW")"; exit 0; }
+  else
+    echo "turing_unlock: checksum mismatch for $(basename "$FW"); not installing"
+    exit 0
+  fi
+fi
+for f in $FW_FILES; do
+  [ -f "/lib/firmware/$f" ] || { echo "turing_unlock: firmware /lib/firmware/$f missing; not loading"; exit 0; }
+done
+
+/sbin/modprobe turing_unlock targets="$TARGETS" 2>/dev/null || \
+  echo "turing_unlock: modprobe failed (nvidia loaded already, or no matching card)"
+exit 0

@@ -1,0 +1,227 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: 'Unraid versions to build (space- or comma-separated)'
+        required: false
+        default: '7.3.2 7.3.3 7.3.4'
+      version:
+        description: 'Plugin version (default: current UTC date, e.g. 2026.11.02)'
+        required: false
+        default: ''
+      upstream_ref:
+        description: 'nlzy/turing-unlock commit or tag'
+        required: false
+        default: '417f333263ff169e8f449c931b70db9dfd7b8ef4'
+      publish:
+        description: 'Create/update the GitHub release'
+        type: boolean
+        default: true
+      build_firmware:
+        description: 'Also build the firmware package as a workflow artifact (not a release asset)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.plan.outputs.versions }}
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      upstream_ref: ${{ steps.plan.outputs.upstream_ref }}
+      publish: ${{ steps.plan.outputs.publish }}
+    steps:
+      - id: plan
+        env:
+          IN_VERSIONS: ${{ github.event.inputs.versions }}
+          IN_VERSION: ${{ github.event.inputs.version }}
+          IN_UPSTREAM: ${{ github.event.inputs.upstream_ref }}
+          IN_PUBLISH: ${{ github.event.inputs.publish }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            VERSIONS="7.3.2 7.3.3 7.3.4"
+            UPSTREAM="417f333263ff169e8f449c931b70db9dfd7b8ef4"
+            PUBLISH=true
+          else
+            VERSION="${IN_VERSION:-$(date -u +%Y.%m.%d)}"
+            VERSIONS="${IN_VERSIONS:-7.3.2 7.3.3 7.3.4}"
+            UPSTREAM="${IN_UPSTREAM:-417f333263ff169e8f449c931b70db9dfd7b8ef4}"
+            PUBLISH="${IN_PUBLISH:-true}"
+          fi
+          [[ $VERSION =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}([a-z0-9.-]*)$ ]] || { echo "invalid version: $VERSION" >&2; exit 1; }
+          [[ $UPSTREAM =~ ^[0-9a-f]{40}$|^[0-9a-zA-Z._/-]+$ ]] || { echo "invalid upstream ref: $UPSTREAM" >&2; exit 1; }
+          versions=$(echo "$VERSIONS" | tr ',' ' ' | xargs)
+          [ -n "$versions" ] || { echo "no Unraid versions" >&2; exit 1; }
+          for v in $versions; do
+            [[ $v =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "invalid Unraid version: $v" >&2; exit 1; }
+          done
+          json=$(printf '%s\n' $versions | python3 -c 'import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))')
+          tag="v$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "versions=$json" >> "$GITHUB_OUTPUT"
+          echo "upstream_ref=$UPSTREAM" >> "$GITHUB_OUTPUT"
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+          { echo "### Release plan"; echo; echo "- tag: \`$tag\`"; echo "- Unraid versions: \`$versions\`"; echo "- upstream: \`$UPSTREAM\`"; echo "- publish: \`$PUBLISH\`"; } >> "$GITHUB_STEP_SUMMARY"
+
+  module:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        unraid: ${{ fromJSON(needs.plan.outputs.versions) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache kernel tarball and sources
+        uses: actions/cache@v4
+        with:
+          path: |
+            cache/configs
+            cache/kernel/*.tar.xz
+            cache/turing-unlock
+          key: unraid-${{ matrix.unraid }}-${{ needs.plan.outputs.upstream_ref }}-v1
+
+      - name: Build the container
+        run: docker build -f build/Dockerfile --build-arg BASE_IMAGE=gcc:15 -t turing-unlock-build .
+
+      - name: Build module for Unraid ${{ matrix.unraid }}
+        run: |
+          mkdir -p out cache
+          docker run --rm \
+            -e UNRAID_VERSION='${{ matrix.unraid }}' \
+            -e BUILD_FIRMWARE=no \
+            -e TURING_UNLOCK_REF='${{ needs.plan.outputs.upstream_ref }}' \
+            -v "$PWD/out:/out" \
+            -v "$PWD/cache:/cache" \
+            turing-unlock-build
+          find out -maxdepth 3 -type f -printf '%p %s bytes\n'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: module-${{ matrix.unraid }}
+          path: out/
+          if-no-files-found: error
+
+  firmware:
+    needs: plan
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_firmware }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the container
+        run: docker build -f build/Dockerfile --build-arg BASE_IMAGE=gcc:15 -t turing-unlock-build .
+      - name: Build the firmware package (local artifact, never a release asset)
+        run: |
+          mkdir -p out/firmware cache
+          docker run --rm \
+            --entrypoint /opt/turing-unlock-build/firmware/build-firmware.sh \
+            -v "$PWD/out:/out" -v "$PWD/cache:/cache" \
+            turing-unlock-build /out/firmware /cache/firmware-work
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-local-only
+          path: out/firmware/
+          if-no-files-found: error
+
+  release:
+    needs: [plan, module]
+    if: ${{ needs.module.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Arrange packages
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          UPSTREAM_REF: ${{ needs.plan.outputs.upstream_ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/packages
+          for txz in artifacts/out/*/*.txz; do
+            kr=$(basename "$(dirname "$txz")")
+            major=${kr%%-*}
+            mkdir -p "dist/packages/$major"
+            cp "$txz" "$txz.sha256" "dist/packages/$major/"
+          done
+          test -n "$(find dist/packages -name '*.txz' -print -quit)"
+          python3 build/make-plg.py \
+            --version "$VERSION" \
+            --release-url "https://github.com/$REPO/releases/download/$TAG" \
+            --plugin-url "https://github.com/$REPO/releases/latest/download/gpu-turing-unlock.plg" \
+            --packages dist/packages \
+            --template plugin/gpu-turing-unlock.plg.in \
+            --plugin-dir plugin \
+            --firmware-dir firmware \
+            --out dist/gpu-turing-unlock.plg \
+            --upstream-ref "$UPSTREAM_REF"
+          ( cd dist && sha256sum gpu-turing-unlock.plg packages/*/* > SHA256SUMS )
+          cat > dist/RELEASE-NOTES.md <<EOF
+          Turing Unlock $VERSION for Unraid.
+
+          - \`turing_unlock\` from [nlzy/turing-unlock](https://github.com/nlzy/turing-unlock) \`$UPSTREAM_REF\`.
+          - Module packages: $(find dist/packages -name '*.txz' -printf '%f ' | sed 's/ $//').
+          - Plugin: \`gpu-turing-unlock.plg\`.
+
+          The NVIDIA firmware package is **not** included. NVIDIA's license does not clearly allow
+          redistributing the blobs. After installing the plugin, open Settings > User Utilities >
+          Turing Unlock and click "Build firmware package", or run
+          \`/usr/local/emhttp/plugins/gpu-turing-unlock/scripts/gpu-turing-unlock firmware\`.
+          It downloads the pinned 610.43.03 inputs from NVIDIA/CachyOS, verifies their SHA-256,
+          and builds the package locally. Reboot afterwards.
+
+          RTD3 is disabled for the nvidia driver while this plugin is installed: the unlock is
+          volatile and an idle D3cold transition clears it.
+          EOF
+          ls -l dist dist/packages/*
+
+      - name: Publish release
+        if: ${{ needs.plan.outputs.publish == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/gpu-turing-unlock.plg dist/SHA256SUMS dist/RELEASE-NOTES.md dist/packages/*/* --clobber
+            gh release edit "$TAG" --title "Turing Unlock $VERSION" --notes-file dist/RELEASE-NOTES.md
+          elif git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            gh release create "$TAG" dist/gpu-turing-unlock.plg dist/SHA256SUMS dist/RELEASE-NOTES.md dist/packages/*/* \
+              --verify-tag --title "Turing Unlock $VERSION" --notes-file dist/RELEASE-NOTES.md
+          else
+            gh release create "$TAG" dist/gpu-turing-unlock.plg dist/SHA256SUMS dist/RELEASE-NOTES.md dist/packages/*/* \
+              --target "$GITHUB_SHA" --title "Turing Unlock $VERSION" --notes-file dist/RELEASE-NOTES.md
+          fi
+
+      - name: Keep the built release files
+        if: ${{ needs.plan.outputs.publish != 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dist
+          path: dist/
+          if-no-files-found: error
