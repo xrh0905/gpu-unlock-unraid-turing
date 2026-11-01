@@ -124,7 +124,7 @@ start() {
   if loaded; then log "turing_unlock already loaded"; return 0; fi
   if ! firmware_ok; then
     log "firmware package for $NV is not installed"
-    notify "Firmware package missing" "The $NV firmware is not installed. Open Settings - User Utilities - Turing Unlock and click 'Build firmware package', then reboot." warning
+    notify "Firmware package missing" "The $NV firmware is not installed. Open Settings - User Utilities - Turing Unlock and click 'Rebuild firmware package', then reboot." warning
     return 0
   fi
   if [ -z "$(target_cards)" ]; then

@@ -15,6 +15,7 @@ at commit `417f333263ff169e8f449c931b70db9dfd7b8ef4` (v2.0.0), GPL-2.0-only:
 The only source change is in `fetch_artifacts.py`: `hashlib.file_digest()` (Python 3.11+) is
 replaced with a chunked `hashlib.sha256()` loop so the script runs on Unraid 7.3's Python 3.9.
 
-`build-firmware.sh` does not redistribute anything. It downloads from NVIDIA and CachyOS on the
-machine that builds the package, checks the pinned hashes, and writes the package locally. NVIDIA's
-firmware license is installed next to the files; read `NOTICE.md` before publishing the output.
+`build-firmware.sh` does not redistribute anything itself. It downloads from NVIDIA and CachyOS on
+the machine that builds the package, checks the pinned hashes, and writes the package locally. This
+repository's release workflow does publish the generated package; see the root README for the
+licensing caveat. NVIDIA's firmware license is installed next to the files; read `NOTICE.md`.
