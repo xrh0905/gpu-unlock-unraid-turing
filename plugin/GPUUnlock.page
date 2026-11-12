@@ -43,7 +43,7 @@ Cards to unlock (targets):
 ### Firmware
 
 The plugin release includes the pinned 610.43.03 firmware package, and the plugin installs it automatically. If it
-is missing or you want to rebuild it, this action downloads the pinned inputs from NVIDIA/CachyOS on this machine,
+is missing or you want to rebuild it, this action downloads the pinned inputs from NVIDIA and the Arch Linux Archive on this machine,
 verifies their SHA-256, and packs the package locally. It needs `python3`, `zstd`, about 1 GB of free space and
 several minutes.
 

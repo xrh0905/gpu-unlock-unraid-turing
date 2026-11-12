@@ -72,7 +72,7 @@ the other five files are unchanged NVIDIA firmware and stay under NVIDIA's terms
 contains `NOTICE.md` and the NVIDIA Driver License Agreement. Upstream's
 [`firmware/NOTICE.md`](firmware/NOTICE.md) notes that redistribution approval is not claimed — if
 that matters for your distribution, delete the firmware asset from the release and use the plugin's
-local **Rebuild firmware package** action, which downloads from NVIDIA/CachyOS on the server.
+local **Rebuild firmware package** action, which downloads from NVIDIA and the Arch Linux Archive on the server.
 
 ### RTD3
 
@@ -110,7 +110,7 @@ UNRAID_VERSION=7.3.2 ./build/run.sh
 KERNEL_CONFIG=/path/to/6.18.38-Unraid.config ./build/run.sh
 UNRAID_SRC=/usr/src ./build/run.sh
 
-# add BUILD_FIRMWARE=yes to also build the firmware package (downloads ~500 MB from NVIDIA/CachyOS)
+# add BUILD_FIRMWARE=yes to also build the firmware package (downloads ~500 MB from NVIDIA and the Arch Linux Archive)
 BUILD_FIRMWARE=yes UNRAID_VERSION=7.3.2 ./build/run.sh
 ```
 

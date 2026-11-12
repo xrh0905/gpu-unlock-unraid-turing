@@ -14,9 +14,9 @@
     {
       "name": "nvidia-utils binary package used for exact firmware extraction",
       "version": "610.43.03-1",
-      "architecture": "x86_64_v3",
+      "architecture": "x86_64",
       "license": "custom (package metadata)",
-      "sha256": "e17e7c92eeffa178b0fe1f40eb17a47095f8fc3ce4a77bf115cf5bd5a4df86e9",
+      "sha256": "c3367ff68632ac7daf6ca50ef7cbdd1cb5d09f7fe0b26125b312c73e52a34cf4",
       "firmware": [
         {
           "path": "usr/lib/firmware/nvidia/610.43.03/gsp_tu10x.bin",
@@ -24,8 +24,8 @@
           "sha256": "73065619db9ec921d19fc4e519dd04d91a9199b525eaca9b257b89fb8c5ec52c"
         }
       ],
-      "filename": "nvidia-utils-610.43.03-1-x86_64_v3.pkg.tar.zst",
-      "url": "https://archive.cachyos.org/archive/cachyos-v3/nvidia-utils-610.43.03-1-x86_64_v3.pkg.tar.zst",
+      "filename": "nvidia-utils-610.43.03-1-x86_64.pkg.tar.zst",
+      "url": "https://archive.archlinux.org/packages/n/nvidia-utils/nvidia-utils-610.43.03-1-x86_64.pkg.tar.zst",
       "notice": {
         "path": "usr/share/licenses/nvidia-utils/LICENSE",
         "sha256": "c692fb14ad4f499c6aee1b9e144e6905148c420e6225b17cb2937366c1e507ad"
@@ -37,10 +37,23 @@
     "size": 64000,
     "size_hex": "0x0000fa00",
     "writes": [
-      {"address": "0x00409650", "value": "0xffffffff", "role": "FEAT_PLM"},
-      {"address": "0x001fa828", "value": "0x00000000", "role": "WPR2_HI"}
+      {
+        "address": "0x00409650",
+        "value": "0xffffffff",
+        "role": "FEAT_PLM"
+      },
+      {
+        "address": "0x001fa828",
+        "value": "0x00000000",
+        "role": "WPR2_HI"
+      }
     ],
-    "mutex": {"index": 3, "token_source": "D[1]", "main_token_dmem": "0x0000ffff", "main_sp": "0x0000fff0"},
+    "mutex": {
+      "index": 3,
+      "token_source": "D[1]",
+      "main_token_dmem": "0x0000ffff",
+      "main_sp": "0x0000fff0"
+    },
     "sha256": "b0ec90294d1de3c67e024631c0a11000f281470d76eed806fc24c66b7fd1ef41",
     "generator": "firmware/generate_v67.py"
   },

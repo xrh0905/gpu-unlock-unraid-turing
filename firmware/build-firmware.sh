@@ -8,7 +8,7 @@
 # checked), generates the six TU102 firmware files with nlzy/turing-unlock's
 # generators, and packs them for /lib/firmware/turing-unlock/610.43.03/.
 #
-# Nothing is redistributed: the inputs come from NVIDIA and CachyOS, and the
+# Nothing is redistributed: the inputs come from NVIDIA and the Arch Linux Archive, and the
 # output stays on the machine that runs this script.
 #
 # Needs: python3 >= 3.9, zstd, tar, xz, sha256sum. ~1 GiB free in workdir.
@@ -19,7 +19,7 @@ OUT=${1:-$HERE/../out/firmware}
 WORK=${2:-${TMPDIR:-/tmp}/turing-unlock-firmware.$$}
 NV=610.43.03
 SRC=NVIDIA-kernel-module-source-$NV
-UTILS=nvidia-utils-$NV-1-x86_64_v3.pkg.tar.zst
+UTILS=nvidia-utils-$NV-1-x86_64.pkg.tar.zst
 FW_FILES=(booter_load_tu102.bin gsp_tu10x.bin gsp_boot_tu102.bin gsp_boot_desc_tu102.bin sec2_bl_tu102.bin v67-tu102-$NV.bin)
 PKG=turing-unlock-firmware-$NV-noarch-1.txz
 

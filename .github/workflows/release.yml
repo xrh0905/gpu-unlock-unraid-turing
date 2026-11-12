@@ -131,9 +131,27 @@ jobs:
       - name: Build the container
         run: docker build -f build/Dockerfile --build-arg BASE_IMAGE=gcc:15 -t turing-unlock-build .
 
+      - name: Reuse the previous firmware package when it verifies
+        run: |
+          set -uo pipefail
+          mkdir -p out/firmware
+          base="https://github.com/${{ github.repository }}/releases/latest/download"
+          name=turing-unlock-firmware-610.43.03-noarch-1.txz
+          if curl -fsSL --retry 2 --connect-timeout 10 -o "out/firmware/$name" "$base/$name" \
+             && curl -fsSL --retry 2 --connect-timeout 10 -o "out/firmware/$name.sha256" "$base/$name.sha256" \
+             && ( cd out/firmware && sha256sum -c "$name.sha256" ); then
+            echo "reused $name from the previous release"
+          else
+            rm -f out/firmware/*
+          fi
+
       - name: Build the firmware package
         run: |
           mkdir -p out/firmware cache
+          if [ -s out/firmware/turing-unlock-firmware-610.43.03-noarch-1.txz ]; then
+            echo "firmware package already present; not rebuilding"
+            exit 0
+          fi
           docker run --rm \
             --entrypoint /opt/turing-unlock-build/firmware/build-firmware.sh \
             -v "$PWD/out:/out" -v "$PWD/cache:/cache" \
