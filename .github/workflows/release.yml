@@ -8,7 +8,7 @@ on:
       versions:
         description: 'Unraid versions to build (space- or comma-separated)'
         required: false
-        default: '7.3.2 7.3.3 7.3.4'
+        default: '7.3.2 7.3.3 7.3.4 7.4.0'
       version:
         description: 'Plugin version (default: current UTC date, e.g. 2026.11.02)'
         required: false
@@ -49,12 +49,12 @@ jobs:
           set -euo pipefail
           if [ "$GITHUB_EVENT_NAME" = push ]; then
             VERSION="${GITHUB_REF_NAME#v}"
-            VERSIONS="7.3.2 7.3.3 7.3.4"
+            VERSIONS="7.3.2 7.3.3 7.3.4 7.4.0"
             UPSTREAM="417f333263ff169e8f449c931b70db9dfd7b8ef4"
             PUBLISH=true
           else
             VERSION="${IN_VERSION:-$(date -u +%Y.%m.%d)}"
-            VERSIONS="${IN_VERSIONS:-7.3.2 7.3.3 7.3.4}"
+            VERSIONS="${IN_VERSIONS:-7.3.2 7.3.3 7.3.4 7.4.0}"
             UPSTREAM="${IN_UPSTREAM:-417f333263ff169e8f449c931b70db9dfd7b8ef4}"
             PUBLISH="${IN_PUBLISH:-true}"
           fi
