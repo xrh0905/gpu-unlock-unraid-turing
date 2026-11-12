@@ -216,7 +216,8 @@ jobs:
           Turing Unlock $VERSION for Unraid.
 
           - \`turing_unlock\` from [nlzy/turing-unlock](https://github.com/nlzy/turing-unlock) \`$UPSTREAM_REF\`.
-          - Module packages: $(find dist/packages -name '*.txz' -printf '%f ' | sed 's/ $//').
+          - Module packages: $(find dist/packages -name 'turing-unlock-module-*.txz' -printf '%f ' | sed 's/ $//').
+          - Firmware: \`turing-unlock-firmware-610.43.03-noarch-1.txz\`.
           - Plugin: \`gpu-turing-unlock.plg\`.
 
           The release also carries \`turing-unlock-firmware-610.43.03-noarch-1.txz\`, built from the
@@ -229,7 +230,7 @@ jobs:
           volatile and an idle D3cold transition clears it.
 
           After an Unraid OS update, the plugin's watcher reads the kernel the new OS will boot and
-          downloads the matching module from the latest release before the reboot, so `rc.modules`
+          downloads the matching module from the latest release before the reboot, so \`rc.modules\`
           installs it on the first boot of that kernel.
           EOF
           ls -l dist dist/assets
