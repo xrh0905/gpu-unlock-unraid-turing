@@ -83,7 +83,7 @@ Removing the plugin removes those files.
 
 ## What the release contains
 
-For each Unraid version in the workflow matrix (default `7.3.2`, `7.3.3`, `7.3.4`, `7.4.0`):
+For each Unraid version in the workflow matrix (default `7.3.2`, `7.3.3`, `7.3.4`, `7.4.0`, `7.4.1`):
 
 | Asset | Contents |
 |---|---|
@@ -94,7 +94,8 @@ For each Unraid version in the workflow matrix (default `7.3.2`, `7.3.3`, `7.3.4
 | `SHA256SUMS` | Checksums for the release assets |
 
 Unraid versions in the default matrix: 7.3.2 → kernel 6.18.38, 7.3.3 → 6.18.54, 7.3.4 → 6.18.58,
-7.4.0 → kernel 6.18.60 (7.3.5 uses 6.18.60 too and shares that package).
+7.4.0 → kernel 6.18.60 (7.3.5 uses 6.18.60 too and shares that package),
+7.4.1 → kernel 6.18.64 (7.3.6 uses 6.18.64 too and shares that package).
 A kernel without a package is safe: nothing loads and the plugin notifies.
 
 ## Build locally
